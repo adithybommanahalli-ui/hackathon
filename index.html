@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CyberDuel — Attack & IDS Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --red: #ff2244;
+    --red-dim: #8b0000;
+    --green: #00ff88;
+    --green-dim: #004422;
+    --bg: #050508;
+    --panel: #0a0a10;
+    --border: #1a1a2e;
+    --text: #c8c8d8;
+    --mono: 'Share Tech Mono', monospace;
+    --display: 'Orbitron', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline effect */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  header {
+    text-align: center;
+    padding: 18px 0 10px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #0d0d1a 0%, var(--bg) 100%);
+  }
+  header h1 {
+    font-family: var(--display);
+    font-size: 2rem;
+    font-weight: 900;
+    letter-spacing: 0.3em;
+    background: linear-gradient(90deg, var(--red) 0%, #fff 50%, var(--green) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p { font-size: 0.72rem; opacity: 0.5; letter-spacing: 0.2em; margin-top: 4px; }
+
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    height: calc(100vh - 140px);
+  }
+
+  /* ===== PANEL SHARED ===== */
+  .panel {
+    display: flex;
+    flex-direction: column;
+    border-top: 2px solid;
+    overflow: hidden;
+  }
+  .panel-attack { border-color: var(--red); background: linear-gradient(180deg, #120008 0%, var(--panel) 100%); border-right: 1px solid var(--border); }
+  .panel-ids    { border-color: var(--green); background: linear-gradient(180deg, #001208 0%, var(--panel) 100%); }
+
+  .panel-header {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .panel-title {
+    font-family: var(--display);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+  }
+  .panel-attack .panel-title { color: var(--red); }
+  .panel-ids    .panel-title { color: var(--green); }
+
+  .dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    animation: pulse 1.5s infinite;
+    flex-shrink: 0;
+  }
+  .dot-red   { background: var(--red);   box-shadow: 0 0 8px var(--red);   }
+  .dot-green { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .dot.off   { animation: none; opacity: 0.2; }
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0.3; }
+  }
+
+  /* Controls */
+  .controls {
+    padding: 12px 16px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  input[type=text] {
+    background: #0a0a14;
+    border: 1px solid #2a2a40;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 7px 10px;
+    border-radius: 4px;
+    flex: 1;
+    min-width: 160px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input[type=text]:focus { border-color: var(--red); }
+
+  button {
+    font-family: var(--display);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 7px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-start {
+    background: var(--red);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(255,34,68,0.4);
+  }
+  .btn-start:hover { background: #ff4466; box-shadow: 0 0 20px rgba(255,34,68,0.7); }
+  .btn-start:disabled { background: #4a1020; box-shadow: none; cursor: not-allowed; }
+  .btn-stop {
+    background: transparent;
+    color: var(--red);
+    border: 1px solid var(--red);
+  }
+  .btn-stop:hover { background: rgba(255,34,68,0.1); }
+  .btn-stop:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Stats row */
+  .stats-row {
+    padding: 8px 16px;
+    display: flex;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stat-label { font-size: 0.6rem; opacity: 0.5; letter-spacing: 0.1em; text-transform: uppercase; }
+  .stat-value { font-family: var(--display); font-size: 1rem; font-weight: 700; }
+  .stat-value.red   { color: var(--red);   text-shadow: 0 0 8px var(--red); }
+  .stat-value.green { color: var(--green); text-shadow: 0 0 8px var(--green); }
+  .stat-value.white { color: #fff; }
+
+  /* Log console */
+  .log-console {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    font-size: 0.7rem;
+    line-height: 1.6;
+  }
+  .log-console::-webkit-scrollbar { width: 4px; }
+  .log-console::-webkit-scrollbar-track { background: transparent; }
+  .log-console::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 2px; }
+
+  .log-entry {
+    padding: 3px 8px;
+    border-radius: 3px;
+    margin-bottom: 2px;
+    border-left: 2px solid transparent;
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+
+  .log-entry.suspicious {
+    border-left-color: var(--red);
+    background: rgba(255,34,68,0.07);
+    color: #ff8899;
+  }
+  .log-entry.normal {
+    border-left-color: var(--green);
+    background: rgba(0,255,136,0.04);
+    color: #88ddaa;
+  }
+  .log-entry.attack {
+    border-left-color: #ff6600;
+    background: rgba(255,102,0,0.06);
+    color: #ffaa66;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 0.6rem;
+    padding: 1px 5px;
+    border-radius: 2px;
+    margin-right: 6px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .tag-sql        { background: #4a0010; color: #ff4466; }
+  .tag-xss        { background: #4a2800; color: #ff9933; }
+  .tag-brute      { background: #2a0040; color: #cc66ff; }
+  .tag-traversal  { background: #001840; color: #4488ff; }
+  .tag-flood      { background: #3a0000; color: #ff3333; }
+  .tag-suspicious { background: #3a1000; color: #ff6600; }
+  .tag-normal     { background: #001a0a; color: #00cc66; }
+
+  /* Mini chart */
+  .chart-container {
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .chart-title { font-size: 0.6rem; opacity: 0.5; letter-spacing: 0.1em; margin-bottom: 6px; text-transform: uppercase; }
+  canvas { width: 100%; height: 60px; display: block; }
+
+  /* Alert banner */
+  .alert-banner {
+    display: none;
+    padding: 6px 16px;
+    background: rgba(255,34,68,0.15);
+    border-bottom: 1px solid var(--red);
+    color: var(--red);
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    animation: blink 0.8s infinite;
+  }
+  .alert-banner.show { display: block; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  /* Bottom status bar */
+  .statusbar {
+    padding: 6px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 0.65rem;
+    opacity: 0.4;
+    letter-spacing: 0.05em;
+    display: flex;
+    gap: 24px;
+  }
+
+  /* Divider */
+  .divider {
+    width: 1px;
+    background: var(--border);
+  }
+
+  @media (max-width: 800px) {
+    .main { grid-template-columns: 1fr; height: auto; }
+    .panel { min-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚔ CYBER DUEL ⚔</h1>
+  <p>ATTACK SIMULATOR &nbsp;|&nbsp; INTRUSION DETECTION SYSTEM</p>
+</header>
+
+<div class="main">
+
+  <!-- ===== SYSTEM 1: ATTACKER ===== -->
+  <div class="panel panel-attack">
+    <div class="panel-header">
+      <div class="dot dot-red off" id="attack-dot"></div>
+      <span class="panel-title">SYSTEM 1 — ATTACKER</span>
+    </div>
+
+    <div class="controls">
+      <input type="text" id="target-url" value="http://localhost:5000" placeholder="Target URL"/>
+      <button class="btn-start" id="btn-start" onclick="startAttack()">▶ START</button>
+      <button class="btn-stop" id="btn-stop" onclick="stopAttack()" disabled>■ STOP</button>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat"><span class="stat-label">Requests Sent</span><span class="stat-value red" id="atk-total">0</span></div>
+      <div class="stat"><span class="stat-label">SQL Injections</span><span class="stat-value red" id="atk-sql">0</span></div>
+      <div class="stat"><span class="stat-label">XSS Probes</span><span class="stat-value red" id="atk-xss">0</span></div>
+      <div class="stat"><span class="stat-label">Brute Force</span><span class="stat-value red" id="atk-brute">0</span></div>
+      <div class="stat"><span class="stat-label">Traversals</span><span class="stat-value red" id="atk-trav">0</span></div>
+    </div>
+
+    <div class="log-console" id="attack-log">
+      <div style="opacity:0.3; padding: 8px; font-size:0.72rem;">[ ATTACK LOG — SET TARGET AND PRESS START ]</div>
+    </div>
+  </div>
+
+  <!-- ===== SYSTEM 2: IDS ===== -->
+  <div class="panel panel-ids">
+    <div class="panel-header">
+      <div class="dot dot-green" id="ids-dot"></div>
+      <span class="panel-title">SYSTEM 2 — IDS MONITOR</span>
+    </div>
+
+    <div class="alert-banner" id="alert-banner">
+      ⚠ ATTACK DETECTED — SUSPICIOUS TRAFFIC IDENTIFIED
+    </div>
+
+    <div class="stats-row">
+      <div class="stat"><span class="stat-label">Total Requests</span><span class="stat-value white" id="ids-total">0</span></div>
+      <div class="stat"><span class="stat-label">Suspicious</span><span class="stat-value red" id="ids-suspicious">0</span></div>
+      <div class="stat"><span class="stat-label">Normal</span><span class="stat-value green" id="ids-normal">0</span></div>
+      <div class="stat"><span class="stat-label">Threat %</span><span class="stat-value red" id="ids-pct">0%</span></div>
+    </div>
+
+    <div class="log-console" id="ids-log">
+      <div style="opacity:0.3; padding: 8px; font-size:0.72rem;">[ IDS LOG — MONITORING http://localhost:5000 → :3000 ]</div>
+    </div>
+
+    <div class="chart-container">
+      <div class="chart-title">Traffic Classification (last 60s)</div>
+      <canvas id="ids-chart" height="60"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<div class="statusbar">
+  <span>ATTACKER API: localhost:8000</span>
+  <span>IDS PROXY: localhost:5000 → :3000</span>
+  <span id="clock"></span>
+</div>
+
+<script>
+// ===== CLOCK =====
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+// ===== ATTACK STATS =====
+let atkStats = { total: 0, sql: 0, xss: 0, brute: 0, trav: 0 };
+
+function updateAtkStats(type) {
+  atkStats.total++;
+  if (type === 'SQL INJECTION') atkStats.sql++;
+  if (type === 'XSS') atkStats.xss++;
+  if (type === 'BRUTE FORCE') atkStats.brute++;
+  if (type === 'DIRECTORY TRAVERSAL') atkStats.trav++;
+  document.getElementById('atk-total').textContent = atkStats.total;
+  document.getElementById('atk-sql').textContent = atkStats.sql;
+  document.getElementById('atk-xss').textContent = atkStats.xss;
+  document.getElementById('atk-brute').textContent = atkStats.brute;
+  document.getElementById('atk-trav').textContent = atkStats.trav;
+}
+
+// ===== ATTACK WEBSOCKET =====
+let atkWS = null;
+function connectAttackerWS() {
+  try {
+    atkWS = new WebSocket('ws://localhost:8000/ws/attacker');
+    atkWS.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      appendAtkLog(d);
+      updateAtkStats(d.attack_type);
+    };
+    atkWS.onclose = () => setTimeout(connectAttackerWS, 2000);
+  } catch(err) {}
+}
+
+function appendAtkLog(d) {
+  const el = document.getElementById('attack-log');
+  const tag = getTag(d.attack_type);
+  const div = document.createElement('div');
+  div.className = 'log-entry attack';
+  div.innerHTML = `<span style="opacity:0.5">[${d.timestamp}]</span> ${tag} ${escHtml(d.message)}`;
+  el.appendChild(div);
+  if (el.children.length > 200) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+// ===== IDS WEBSOCKET =====
+let idsWS = null;
+let chartData = { suspicious: [], normal: [], labels: [] };
+let alertTimeout = null;
+
+function connectIDSWS() {
+  try {
+    idsWS = new WebSocket('ws://localhost:5000/ws/ids');
+    idsWS.onmessage = (e) => {
+      const d = JSON.parse(e.data);
+      appendIDSLog(d);
+      updateIDSStats(d.stats);
+      updateChart(d.suspicious);
+      if (d.suspicious) showAlert();
+    };
+    idsWS.onclose = () => setTimeout(connectIDSWS, 2000);
+  } catch(err) {}
+}
+
+function appendIDSLog(d) {
+  const el = document.getElementById('ids-log');
+  const cls = d.suspicious ? 'suspicious' : 'normal';
+  const tag = d.suspicious
+    ? `<span class="tag tag-suspicious">⚠ ${escHtml(d.attack_type)}</span>`
+    : `<span class="tag tag-normal">✓ NORMAL</span>`;
+  const div = document.createElement('div');
+  div.className = `log-entry ${cls}`;
+  div.innerHTML = `<span style="opacity:0.5">[${d.timestamp}]</span> ${tag} ${escHtml(d.method)} ${escHtml(d.path)} <span style="opacity:0.4">${d.req_rate}/s</span>`;
+  el.appendChild(div);
+  if (el.children.length > 200) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateIDSStats(stats) {
+  if (!stats) return;
+  document.getElementById('ids-total').textContent = stats.total || 0;
+  document.getElementById('ids-suspicious').textContent = stats.suspicious || 0;
+  document.getElementById('ids-normal').textContent = stats.normal || 0;
+  const pct = stats.total > 0 ? Math.round((stats.suspicious / stats.total) * 100) : 0;
+  document.getElementById('ids-pct').textContent = pct + '%';
+}
+
+function showAlert() {
+  const b = document.getElementById('alert-banner');
+  b.classList.add('show');
+  clearTimeout(alertTimeout);
+  alertTimeout = setTimeout(() => b.classList.remove('show'), 3000);
+}
+
+// ===== MINI CHART =====
+const chartCanvas = document.getElementById('ids-chart');
+const ctx = chartCanvas.getContext('2d');
+const MAX_POINTS = 40;
+let chartSusp = new Array(MAX_POINTS).fill(0);
+let chartNorm  = new Array(MAX_POINTS).fill(0);
+
+function updateChart(suspicious) {
+  chartSusp.push(suspicious ? 1 : 0);
+  chartNorm.push(suspicious ? 0 : 1);
+  if (chartSusp.length > MAX_POINTS) { chartSusp.shift(); chartNorm.shift(); }
+  drawChart();
+}
+
+function drawChart() {
+  const W = chartCanvas.offsetWidth || 400;
+  const H = 60;
+  chartCanvas.width = W;
+  chartCanvas.height = H;
+  ctx.clearRect(0, 0, W, H);
+
+  // Rolling sums
+  const window = 5;
+  const susSmooth = [];
+  const norSmooth = [];
+  for (let i = 0; i < chartSusp.length; i++) {
+    let s = 0, n = 0, count = 0;
+    for (let j = Math.max(0, i - window); j <= i; j++) { s += chartSusp[j]; n += chartNorm[j]; count++; }
+    susSmooth.push(s / count * window);
+    norSmooth.push(n / count * window);
+  }
+
+  const max = Math.max(...susSmooth, ...norSmooth, 1);
+  const step = W / (MAX_POINTS - 1);
+
+  function drawLine(data, color) {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    data.forEach((v, i) => {
+      const x = i * step;
+      const y = H - (v / max) * (H - 4) - 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  drawLine(susSmooth, '#ff2244');
+  drawLine(norSmooth, '#00ff88');
+}
+
+// ===== START / STOP =====
+async function startAttack() {
+  const target = document.getElementById('target-url').value || 'http://localhost:5000';
+  try {
+    await fetch('http://localhost:8000/attack/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target })
+    });
+  } catch(e) {
+    appendAtkLog({ timestamp: new Date().toLocaleTimeString(), attack_type: 'ERROR', message: 'Cannot reach attacker API on :8000 — is main.py running?' });
+  }
+  document.getElementById('btn-start').disabled = true;
+  document.getElementById('btn-stop').disabled = false;
+  document.getElementById('attack-dot').classList.remove('off');
+}
+
+async function stopAttack() {
+  try {
+    await fetch('http://localhost:8000/attack/stop', { method: 'POST' });
+  } catch(e) {}
+  document.getElementById('btn-start').disabled = false;
+  document.getElementById('btn-stop').disabled = true;
+  document.getElementById('attack-dot').classList.add('off');
+}
+
+// ===== HELPERS =====
+function getTag(type) {
+  const map = {
+    'SQL INJECTION':      '<span class="tag tag-sql">SQL</span>',
+    'XSS':                '<span class="tag tag-xss">XSS</span>',
+    'BRUTE FORCE':        '<span class="tag tag-brute">BRUTE</span>',
+    'DIRECTORY TRAVERSAL':'<span class="tag tag-traversal">TRAV</span>',
+    'REQUEST FLOOD':      '<span class="tag tag-flood">FLOOD</span>',
+  };
+  return map[type] || `<span class="tag tag-suspicious">${escHtml(type)}</span>`;
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ===== INIT =====
+connectAttackerWS();
+connectIDSWS();
+drawChart();
+</script>
+</body>
+</html>
