@@ -6,6 +6,7 @@ import NexusScore from './components/NexusScore';
 import Timeline from './components/Timeline';
 import ConvergenceAlert from './components/ConvergenceAlert';
 import ThreatAlertContainer, { useThreatAlerts } from './components/ThreatAlert';
+import RealTimePanel from './components/RealTimePanel';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useThreatData } from './hooks/useThreatData';
 
@@ -179,11 +180,11 @@ export default function App() {
           onDismiss={() => setAlertDismissed(true)}
         />
 
-        {/* Three-column main panels */}
+        {/* Four-column main panels */}
         <div className="flex gap-3 flex-1 min-h-0" style={{ minHeight: 520 }}>
 
-          {/* LEFT: Network Panel (40%) */}
-          <div className="flex-none" style={{ width: '40%' }}>
+          {/* LEFT: Network Panel (30%) */}
+          <div className="flex-none" style={{ width: '30%' }}>
             <NetworkPanel
               data={data}
               onSimulateDoS={simulateDoS}
@@ -192,8 +193,13 @@ export default function App() {
             />
           </div>
 
-          {/* CENTER: Nexus Score (20%) */}
+          {/* CENTER-LEFT: Real-Time Live Data (20%) */}
           <div className="flex-none" style={{ width: '20%' }}>
+            <RealTimePanel />
+          </div>
+
+          {/* CENTER-RIGHT: Nexus Score (15%) */}
+          <div className="flex-none" style={{ width: '15%' }}>
             <NexusScore
               crisisScore={data.crisisScore}
               status={data.status}
@@ -202,8 +208,8 @@ export default function App() {
             />
           </div>
 
-          {/* RIGHT: Social Panel (40%) */}
-          <div className="flex-none" style={{ width: '40%' }}>
+          {/* RIGHT: Social Panel (35%) */}
+          <div className="flex-none" style={{ width: '35%' }}>
             <SocialPanel
               data={data}
               onAnalyze={handleAnalyzeSocial}

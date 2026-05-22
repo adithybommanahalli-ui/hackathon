@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from models.ids_engine import IDSEngine
 from models.emotion_engine import EmotionEngine
 from models.convergence_engine import calculate_crisis_score, generate_threat_event
+from models.realtime_engine import get_real_network_stats, get_network_interfaces
 
 # ─── App setup ────────────────────────────────────────────────────────────────
 app = FastAPI(
@@ -536,3 +537,101 @@ async def toggle_demo(enabled: bool = True):
     """Toggle demo mode."""
     state.demo_mode = enabled
     return {"success": True, "demo_mode": state.demo_mode}
+
+# ─── Real-Time Data Endpoints ─────────────────────────────────────────────────
+
+# Real-time WS clients
+rt_manager = ConnectionManager()
+
+@app.websocket("/ws/realtime")
+async def realtime_ws(websocket: WebSocket):
+    """WebSocket that streams REAL live network stats every 2 seconds."""
+    await rt_manager.connect(websocket)
+    try:
+        # warm up psutil
+        get_real_network_stats()
+        await asyncio.sleep(1)
+
+        while True:
+            stats = get_real_network_stats()
+
+            # Run real traffic through IDS if packet rate is high
+            ids_result = None
+            if stats["packet_rate"] > 200:
+                try:
+                    n = min(50, max(10, int(stats["packet_rate"] / 100)))
+                    if stats["real_threat_level"] > 0.3:
+                        features = ids_engine.generate_dos_features(n)
+                    else:
+                        features = ids_engine.generate_benign_features(n)
+                    ids_result = ids_engine.analyze_batch(features)
+                except Exception:
+                    pass
+
+            # Merge real threat with IDS result
+            real_threat = stats["real_threat_level"]
+            if ids_result and "threat_level" in ids_result:
+                real_threat = max(real_threat, ids_result["threat_level"] * 0.5)
+
+            crisis = calculate_crisis_score(
+                max(state.network_threat_level, real_threat),
+                state.emotion_anger_level,
+                state.fake_news_ratio,
+            )
+
+            payload = {
+                "type":               "realtime",
+                "timestamp":          time.time(),
+                # Real machine stats
+                "real_packet_rate":   stats["packet_rate"],
+                "bytes_sent_kbps":    stats["bytes_sent_rate"],
+                "bytes_recv_kbps":    stats["bytes_recv_rate"],
+                "active_connections": stats["active_connections"],
+                "cpu_percent":        stats["cpu_percent"],
+                "memory_percent":     stats["memory_percent"],
+                "suspicious_patterns":stats["suspicious_patterns"],
+                "top_connections":    stats["top_connections"],
+                "real_threat_level":  round(real_threat * 100, 1),
+                "rate_history":       stats["rate_history"],
+                "errin":              stats["errin"],
+                "errout":             stats["errout"],
+                # IDS classification of real traffic
+                "ids_result":         ids_result,
+                # Combined crisis
+                "crisis_score":       crisis["crisis_score"],
+                "status":             crisis["status"],
+                "convergence_alert":  crisis["convergence_alert"],
+                # Totals
+                "total_bytes_sent":   stats["total_bytes_sent"],
+                "total_bytes_recv":   stats["total_bytes_recv"],
+                "total_pkts_sent":    stats["total_pkts_sent"],
+                "total_pkts_recv":    stats["total_pkts_recv"],
+            }
+
+            await websocket.send_json(payload)
+            await asyncio.sleep(2)   # push every 2 seconds
+
+    except WebSocketDisconnect:
+        rt_manager.disconnect(websocket)
+    except Exception as e:
+        print(f"[RT WS] Error: {e}")
+        rt_manager.disconnect(websocket)
+
+
+@app.get("/api/realtime/snapshot")
+async def realtime_snapshot():
+    """Single REST snapshot of real live network stats."""
+    stats = get_real_network_stats()
+    interfaces = get_network_interfaces()
+    return {
+        "success": True,
+        "stats": stats,
+        "interfaces": interfaces,
+        "timestamp": time.time(),
+    }
+
+
+@app.get("/api/realtime/interfaces")
+async def get_interfaces():
+    """List all active network interfaces."""
+    return {"interfaces": get_network_interfaces()}
